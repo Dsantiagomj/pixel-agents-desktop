@@ -1,0 +1,40 @@
+schema: spec-driven
+
+context: |
+  Tech stack: Electron 35+, React 19, Vite 7, TypeScript 5.9 (strict, erasableSyntaxOnly)
+  Architecture: Electron main process (Node.js) + renderer (React Canvas 2D game engine)
+  Forked from: pixel-agents VS Code extension (webview-ui reused ~95%)
+  Key modules: agentDiscovery (fs watching), transcriptParser (JSONL), Canvas 2D renderer
+  Testing: None yet — to be added
+  Style: No enums (as const), verbatimModuleSyntax, import type required
+  Build: esbuild (main process) + Vite (renderer), electron-builder for packaging
+
+rules:
+  proposal:
+    - Include rollback plan for risky changes
+    - Identify affected modules (main process vs renderer vs shared)
+    - Note if change affects IPC message protocol
+  specs:
+    - Use Given/When/Then format for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+    - Specify which process the behavior belongs to (main/renderer)
+  design:
+    - Include sequence diagrams for IPC flows
+    - Document architecture decisions with rationale
+    - Reference original pixel-agents code when porting
+  tasks:
+    - Group tasks by phase (infrastructure, implementation, testing)
+    - Use hierarchical numbering (1.1, 1.2, etc.)
+    - Keep tasks small enough to complete in one session
+    - Specify exact file paths for all changes
+  apply:
+    - Follow pixel-agents code patterns and conventions
+    - Code always in English (variables, functions, comments)
+    - Constants in dedicated constants.ts files (never inline)
+    - No VS Code API imports — pure Node.js + Electron
+  verify:
+    - Run tests if test infrastructure exists
+    - Compare implementation against every spec scenario
+    - Verify IPC messages match between main and renderer
+  archive:
+    - Warn before merging destructive deltas (large removals)
