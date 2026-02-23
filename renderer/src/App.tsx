@@ -6,7 +6,7 @@ import { EditorToolbar } from './office/editor/EditorToolbar.js'
 import { EditorState } from './office/editor/editorState.js'
 import { EditTool } from './office/types.js'
 import { isRotatable } from './office/layout/furnitureCatalog.js'
-import { vscode } from './vscodeApi.js'
+import { api } from './electronApi.js'
 import { useExtensionMessages } from './hooks/useExtensionMessages.js'
 import { PULSE_ANIMATION_DURATION_SEC } from './constants.js'
 import { useEditorActions } from './hooks/useEditorActions.js'
@@ -128,7 +128,7 @@ function App() {
   const handleToggleDebugMode = useCallback(() => setIsDebugMode((prev) => !prev), [])
 
   const handleSelectAgent = useCallback((id: number) => {
-    vscode.postMessage({ type: 'focusAgent', id })
+    api.send('focusAgent', { id })
   }, [])
 
   const containerRef = useRef<HTMLDivElement>(null)
@@ -147,7 +147,7 @@ function App() {
   )
 
   const handleCloseAgent = useCallback((id: number) => {
-    vscode.postMessage({ type: 'closeAgent', id })
+    api.send('closeAgent', { id })
   }, [])
 
   const handleClick = useCallback((agentId: number) => {
@@ -155,7 +155,7 @@ function App() {
     const os = getOfficeState()
     const meta = os.subagentMeta.get(agentId)
     const focusId = meta ? meta.parentAgentId : agentId
-    vscode.postMessage({ type: 'focusAgent', id: focusId })
+    api.send('focusAgent', { id: focusId })
   }, [])
 
   const officeState = getOfficeState()

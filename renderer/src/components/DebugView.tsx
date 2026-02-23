@@ -1,5 +1,5 @@
 import type { ToolActivity } from '../office/types.js'
-import { vscode } from '../vscodeApi.js'
+import { api } from '../electronApi.js'
 
 interface DebugViewProps {
   agents: number[]
@@ -89,7 +89,7 @@ export function DebugView({
             Agent #{id}
           </button>
           <button
-            onClick={() => vscode.postMessage({ type: 'closeAgent', id })}
+            onClick={() => api.send('closeAgent', { id })}
             style={{
               borderRadius: 0,
               padding: '6px 8px',

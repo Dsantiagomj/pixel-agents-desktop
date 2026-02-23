@@ -7,7 +7,7 @@ import { buildDynamicCatalog } from '../office/layout/furnitureCatalog.js'
 import { setFloorSprites } from '../office/floorTiles.js'
 import { setWallSprites } from '../office/wallTiles.js'
 import { setCharacterTemplates } from '../office/sprites/spriteData.js'
-import { vscode } from '../vscodeApi.js'
+import { api } from '../electronApi.js'
 import { playDoneSound, setSoundEnabled } from '../notificationSound.js'
 
 export interface SubagentCharacter {
@@ -52,7 +52,7 @@ function saveAgentSeats(os: OfficeState): void {
     if (ch.isSubagent) continue
     seats[ch.id] = { palette: ch.palette, hueShift: ch.hueShift, seatId: ch.seatId }
   }
-  vscode.postMessage({ type: 'saveAgentSeats', seats })
+  api.send('saveAgentSeats', { seats })
 }
 
 export function useExtensionMessages(
@@ -343,9 +343,21 @@ export function useExtensionMessages(
         }
       }
     }
-    window.addEventListener('message', handler)
-    vscode.postMessage({ type: 'webviewReady' })
-    return () => window.removeEventListener('message', handler)
+    const channels = [
+      'agentCreated', 'agentClosed', 'agentToolStart', 'agentToolDone',
+      'agentToolsClear', 'agentStatus', 'agentSelected', 'agentToolPermission',
+      'agentToolPermissionClear',
+      'subagentToolStart', 'subagentToolDone', 'subagentClear', 'subagentToolPermission',
+      'existingAgents', 'layoutLoaded', 'characterSpritesLoaded', 'floorTilesLoaded',
+      'wallTilesLoaded', 'furnitureAssetsLoaded', 'settingsLoaded',
+    ]
+    const cleanups = channels.map(channel =>
+      api.on(channel, (data) => {
+        handler({ data: { type: channel, ...(data as Record<string, unknown>) } } as MessageEvent)
+      })
+    )
+    api.send('webviewReady')
+    return () => cleanups.forEach(cleanup => cleanup())
   }, [getOfficeState])
 
   return { agents, selectedAgent, agentTools, agentStatuses, subagentTools, subagentCharacters, layoutReady, loadedAssets }
