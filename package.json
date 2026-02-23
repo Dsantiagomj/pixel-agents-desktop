@@ -1,0 +1,28 @@
+{
+  "name": "pixel-agents-desktop",
+  "version": "0.1.0",
+  "description": "Standalone desktop app to visualize Claude Code agents as pixel art characters",
+  "main": "dist/main/main.js",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:main\" \"npm run dev:renderer\"",
+    "dev:main": "node esbuild.main.mjs --watch",
+    "dev:renderer": "cd renderer && vite",
+    "build": "npm run build:main && npm run build:renderer",
+    "build:main": "node esbuild.main.mjs",
+    "build:renderer": "cd renderer && vite build",
+    "start": "electron .",
+    "dist": "npm run build && electron-builder"
+  },
+  "dependencies": {
+    "pngjs": "^7.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/pngjs": "^6.0.5",
+    "concurrently": "^9.0.0",
+    "electron": "^35.0.0",
+    "electron-builder": "^26.0.0",
+    "esbuild": "^0.27.0",
+    "typescript": "^5.9.0"
+  }
+}
