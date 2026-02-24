@@ -14,6 +14,7 @@ import { useEditorKeyboard } from './hooks/useEditorKeyboard.js'
 import { ZoomControls } from './components/ZoomControls.js'
 import { BottomToolbar } from './components/BottomToolbar.js'
 import { DebugView } from './components/DebugView.js'
+import { UpdateNotification } from './components/UpdateNotification.js'
 
 // Game state lives outside React — updated imperatively by message handlers
 const officeStateRef = { current: null as OfficeState | null }
@@ -305,6 +306,8 @@ function App() {
           onSelectAgent={handleSelectAgent}
         />
       )}
+
+      <UpdateNotification />
     </div>
   )
 }

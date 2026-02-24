@@ -6,6 +6,7 @@ import { loadCharacterSprites, loadFloorTiles, loadWallTiles, loadFurnitureAsset
 import { AgentDiscovery } from './agentDiscovery.js';
 import { startFileWatching, stopFileWatching, readNewLines } from './fileWatcher.js';
 import { createTray } from './tray.js';
+import { setupAutoUpdater, quitAndInstall } from './autoUpdater.js';
 import type { AgentState, IpcBridge } from './types.js';
 
 let mainWindow: BrowserWindow | null = null;
@@ -276,6 +277,10 @@ function setupIPC(): void {
     }
   });
 
+  ipcMain.on('installUpdate', () => {
+    quitAndInstall();
+  });
+
   // Stub handlers — no terminal management in standalone mode
   ipcMain.on('focusAgent', () => {});
   ipcMain.on('closeAgent', () => {});
@@ -286,6 +291,10 @@ app.whenReady().then(() => {
   mainWindow = createWindow();
   tray = createTray(mainWindow);
   setupIPC();
+
+  if (app.isPackaged) {
+    setupAutoUpdater(mainWindow);
+  }
 
   // macOS: hide to tray instead of quitting when closing window
   mainWindow.on('close', (event) => {
