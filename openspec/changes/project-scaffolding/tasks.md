@@ -44,8 +44,8 @@
 - [x] 5.1 Build renderer: `cd renderer && npm run build`
 - [x] 5.2 Build main: `node esbuild.main.mjs`
 - [x] 5.3 Run `npx electron .` — verify window opens
-- [ ] 5.4 Debug and fix any asset loading issues (paths, CSP, file:// protocol)
-- [ ] 5.5 Debug and fix any IPC message format mismatches between main and renderer
-- [ ] 5.6 Verify the office canvas renders with default layout (floor tiles, walls, furniture visible)
+- [x] 5.4 Debug and fix any asset loading issues (paths, CSP, file:// protocol) — Created `src/assetLoader.ts`, integrated into `webviewReady` handler. Copied floors.png and furniture/ from installed VS Code extension.
+- [x] 5.5 Debug and fix any IPC message format mismatches between main and renderer — Assets sent in correct order: chars → floors → walls → furniture → settings → layout
+- [x] 5.6 Verify the office canvas renders with default layout (floor tiles, walls, furniture visible) — All 92 furniture assets + 7 floor patterns + 16 wall tiles + 6 character sprites loaded
 - [ ] 5.7 Verify no console errors related to missing VS Code API
 - [ ] 5.8 Commit: `feat: end-to-end scaffolding working`
