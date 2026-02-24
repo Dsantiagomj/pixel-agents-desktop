@@ -1,6 +1,6 @@
 {
   "name": "pixel-agents-desktop",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Standalone desktop app to visualize Claude Code agents as pixel art characters",
   "main": "dist/main/main.js",
   "scripts": {
