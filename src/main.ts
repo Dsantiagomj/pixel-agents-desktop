@@ -2,11 +2,22 @@ import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { loadCharacterSprites, loadFloorTiles, loadWallTiles, loadFurnitureAssets } from './assetLoader.js';
+import { AgentDiscovery } from './agentDiscovery.js';
+import { startFileWatching, stopFileWatching, readNewLines } from './fileWatcher.js';
+import type { AgentState, IpcBridge } from './types.js';
 
 let mainWindow: BrowserWindow | null = null;
+let discovery: AgentDiscovery | null = null;
 
 const CONFIG_DIR = '.pixel-agents';
 const SETTINGS_FILE = 'settings.json';
+
+// Agent management state
+const fileWatchers = new Map<number, fs.FSWatcher>();
+const pollingTimers = new Map<number, ReturnType<typeof setInterval>>();
+const waitingTimers = new Map<number, ReturnType<typeof setTimeout>>();
+const permissionTimers = new Map<number, ReturnType<typeof setTimeout>>();
 
 interface Settings {
   soundEnabled: boolean;
@@ -41,16 +52,13 @@ function writeSettings(settings: Settings): void {
 }
 
 function getAssetsRoot(): string {
-  // In production: resources/app/dist/assets
-  // In development: dist/assets (copied by esbuild.main.mjs)
   const prodPath = path.join(__dirname, '..', 'assets');
   if (fs.existsSync(prodPath)) return prodPath;
 
-  // Fallback: check renderer/public/assets (dev without build)
   const devPath = path.join(__dirname, '..', '..', 'renderer', 'public', 'assets');
   if (fs.existsSync(devPath)) return devPath;
 
-  return prodPath; // Will fail gracefully if missing
+  return prodPath;
 }
 
 function getLayoutPath(): string {
@@ -90,6 +98,13 @@ function send(channel: string, data?: unknown): void {
   mainWindow?.webContents.send(channel, data ?? {});
 }
 
+// IPC bridge for file watcher and transcript parser
+const bridge: IpcBridge = {
+  send(channel: string, data: unknown): void {
+    send(channel, data);
+  },
+};
+
 function createWindow(): BrowserWindow {
   const settings = readSettings();
 
@@ -108,7 +123,6 @@ function createWindow(): BrowserWindow {
     backgroundColor: '#1e1e2e',
   });
 
-  // Load renderer
   const isDev = !app.isPackaged;
   if (isDev && process.env['ELECTRON_DEV'] === '1') {
     win.loadURL('http://localhost:5173');
@@ -118,7 +132,6 @@ function createWindow(): BrowserWindow {
     win.loadFile(indexPath);
   }
 
-  // Save window bounds on move/resize
   const saveBounds = () => {
     if (!win.isMinimized() && !win.isMaximized()) {
       const settings = readSettings();
@@ -132,15 +145,78 @@ function createWindow(): BrowserWindow {
   return win;
 }
 
+function startDiscovery(): void {
+  discovery = new AgentDiscovery({
+    onAgentDiscovered: (agent: AgentState) => {
+      console.log(`[Pixel Agents] Sending agentCreated for agent ${agent.id}`);
+      send('agentCreated', { id: agent.id });
+
+      // Start watching this agent's JSONL file
+      const agents = discovery!.getAgents();
+      startFileWatching(
+        agent.id, agent.jsonlFile,
+        agents, fileWatchers, pollingTimers, waitingTimers, permissionTimers,
+        bridge,
+      );
+
+      // Do an initial read to catch up on any recent activity
+      readNewLines(agent.id, agents, waitingTimers, permissionTimers, bridge);
+    },
+    onAgentDormant: (agentId: number) => {
+      console.log(`[Pixel Agents] Agent ${agentId} went dormant`);
+      stopFileWatching(agentId, fileWatchers, pollingTimers, waitingTimers, permissionTimers);
+      send('agentClosed', { id: agentId });
+    },
+  });
+  discovery.start();
+}
+
+function stopDiscovery(): void {
+  if (discovery) {
+    // Stop all file watchers
+    for (const agentId of discovery.getAgentIds()) {
+      stopFileWatching(agentId, fileWatchers, pollingTimers, waitingTimers, permissionTimers);
+    }
+    discovery.stop();
+    discovery = null;
+  }
+}
+
 function setupIPC(): void {
   ipcMain.on('webviewReady', async () => {
+    const assetsDir = getAssetsRoot();
+
+    // Load and send assets in correct order (sprites before layout)
+    const charSprites = loadCharacterSprites(assetsDir);
+    if (charSprites) {
+      send('characterSpritesLoaded', { characters: charSprites.characters });
+    }
+
+    const floorTiles = loadFloorTiles(assetsDir);
+    if (floorTiles) {
+      send('floorTilesLoaded', { sprites: floorTiles.sprites });
+    }
+
+    const wallTiles = loadWallTiles(assetsDir);
+    if (wallTiles) {
+      send('wallTilesLoaded', { sprites: wallTiles.sprites });
+    }
+
+    const furniture = loadFurnitureAssets(assetsDir);
+    if (furniture) {
+      send('furnitureAssetsLoaded', { catalog: furniture.catalog, sprites: furniture.sprites });
+    }
+
+    // Settings and layout sent last (before discovery)
     const settings = readSettings();
     send('settingsLoaded', { soundEnabled: settings.soundEnabled });
 
-    // Send layout
     const saved = readLayout();
     const defaultLayout = loadDefaultLayout();
     send('layoutLoaded', { layout: saved ?? defaultLayout });
+
+    // Start agent discovery after layout is loaded
+    startDiscovery();
   });
 
   ipcMain.on('saveLayout', (_event, data: { layout: Record<string, unknown> }) => {
@@ -197,10 +273,10 @@ function setupIPC(): void {
     }
   });
 
-  // Stub handlers for messages we don't handle yet
-  ipcMain.on('focusAgent', () => { /* No terminal to focus in standalone mode */ });
-  ipcMain.on('closeAgent', () => { /* Agent lifecycle managed by discovery */ });
-  ipcMain.on('openClaude', () => { /* No terminal spawning in standalone mode */ });
+  // Stub handlers — no terminal management in standalone mode
+  ipcMain.on('focusAgent', () => {});
+  ipcMain.on('closeAgent', () => {});
+  ipcMain.on('openClaude', () => {});
 }
 
 app.whenReady().then(() => {
@@ -218,4 +294,8 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
+});
+
+app.on('before-quit', () => {
+  stopDiscovery();
 });
