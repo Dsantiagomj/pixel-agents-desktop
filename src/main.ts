@@ -1,14 +1,17 @@
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, Tray } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { loadCharacterSprites, loadFloorTiles, loadWallTiles, loadFurnitureAssets } from './assetLoader.js';
 import { AgentDiscovery } from './agentDiscovery.js';
 import { startFileWatching, stopFileWatching, readNewLines } from './fileWatcher.js';
+import { createTray } from './tray.js';
 import type { AgentState, IpcBridge } from './types.js';
 
 let mainWindow: BrowserWindow | null = null;
 let discovery: AgentDiscovery | null = null;
+let tray: Tray | null = null;
+let isQuitting = false;
 
 const CONFIG_DIR = '.pixel-agents';
 const SETTINGS_FILE = 'settings.json';
@@ -281,11 +284,23 @@ function setupIPC(): void {
 
 app.whenReady().then(() => {
   mainWindow = createWindow();
+  tray = createTray(mainWindow);
   setupIPC();
+
+  // macOS: hide to tray instead of quitting when closing window
+  mainWindow.on('close', (event) => {
+    if (process.platform === 'darwin' && !isQuitting) {
+      event.preventDefault();
+      mainWindow?.hide();
+    }
+  });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       mainWindow = createWindow();
+    } else {
+      mainWindow?.show();
+      mainWindow?.focus();
     }
   });
 });
@@ -297,5 +312,6 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  isQuitting = true;
   stopDiscovery();
 });
