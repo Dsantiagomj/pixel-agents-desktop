@@ -1,4 +1,4 @@
-import electronUpdater, { type AppUpdater } from 'electron-updater';
+import { autoUpdater } from 'electron-updater';
 import { app, shell, type BrowserWindow } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -10,6 +10,9 @@ const RELEASE_URL = 'https://github.com/Dsantiagomj/pixel-agents-desktop/release
 function logToFile(message: string): void {
   try {
     const logDir = app.getPath('logs');
+    if (!fs.existsSync(logDir)) {
+      fs.mkdirSync(logDir, { recursive: true });
+    }
     const logFile = path.join(logDir, 'auto-update.log');
     const timestamp = new Date().toISOString();
     fs.appendFileSync(logFile, `[${timestamp}] ${message}\n`);
@@ -18,14 +21,7 @@ function logToFile(message: string): void {
   }
 }
 
-function getAutoUpdater(): AppUpdater {
-  const { autoUpdater } = electronUpdater;
-  return autoUpdater;
-}
-
 export function setupAutoUpdater(mainWindow: BrowserWindow): void {
-  const autoUpdater = getAutoUpdater();
-
   // On macOS without code signing, Squirrel.Mac can't install updates.
   // We disable auto-download and just notify the user with a download link.
   autoUpdater.autoDownload = !isMac;
@@ -79,7 +75,6 @@ export function setupAutoUpdater(mainWindow: BrowserWindow): void {
 }
 
 export function quitAndInstall(): void {
-  const autoUpdater = getAutoUpdater();
   autoUpdater.quitAndInstall(false, true);
 }
 
