@@ -6,10 +6,10 @@
   "scripts": {
     "dev": "concurrently \"npm run dev:main\" \"npm run dev:renderer\"",
     "dev:main": "node esbuild.main.mjs --watch",
-    "dev:renderer": "cd renderer && vite",
+    "dev:renderer": "cd renderer && npx vite",
     "build": "npm run build:main && npm run build:renderer",
     "build:main": "node esbuild.main.mjs",
-    "build:renderer": "cd renderer && vite build",
+    "build:renderer": "cd renderer && npm run build",
     "start": "electron .",
     "dist": "npm run build && electron-builder"
   },
