@@ -6,7 +6,7 @@ import { loadCharacterSprites, loadFloorTiles, loadWallTiles, loadFurnitureAsset
 import { AgentDiscovery } from './agentDiscovery.js';
 import { startFileWatching, stopFileWatching, readNewLines } from './fileWatcher.js';
 import { createTray } from './tray.js';
-import { setupAutoUpdater, quitAndInstall } from './autoUpdater.js';
+import { setupAutoUpdater, quitAndInstall, openReleaseUrl } from './autoUpdater.js';
 import type { AgentState, IpcBridge } from './types.js';
 
 let mainWindow: BrowserWindow | null = null;
@@ -287,6 +287,10 @@ function setupIPC(): void {
 
   ipcMain.on('installUpdate', () => {
     quitAndInstall();
+  });
+
+  ipcMain.on('openReleaseUrl', () => {
+    openReleaseUrl();
   });
 
   // Stub handlers — no terminal management in standalone mode
