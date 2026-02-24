@@ -1,4 +1,5 @@
 import type { ToolActivity } from '../office/types.js'
+import type { AgentType } from '../hooks/useExtensionMessages.js'
 import { api } from '../electronApi.js'
 
 interface DebugViewProps {
@@ -6,6 +7,7 @@ interface DebugViewProps {
   selectedAgent: number | null
   agentTools: Record<number, ToolActivity[]>
   agentStatuses: Record<number, string>
+  agentTypes: Record<number, AgentType>
   subagentTools: Record<number, Record<string, ToolActivity[]>>
   onSelectAgent: (id: number) => void
 }
@@ -55,6 +57,7 @@ export function DebugView({
   selectedAgent,
   agentTools,
   agentStatuses,
+  agentTypes,
   subagentTools,
   onSelectAgent,
 }: DebugViewProps) {
@@ -63,6 +66,7 @@ export function DebugView({
     const tools = agentTools[id] || []
     const subs = subagentTools[id] || {}
     const status = agentStatuses[id]
+    const aType = agentTypes[id] || 'claude'
     const hasActiveTools = tools.some((t) => !t.done)
     return (
       <div
@@ -86,7 +90,7 @@ export function DebugView({
               fontWeight: isSelected ? 'bold' : undefined,
             }}
           >
-            Agent #{id}
+            {aType === 'codex' ? 'Codex' : 'Claude'} #{id}
           </button>
           <button
             onClick={() => api.send('closeAgent', { id })}

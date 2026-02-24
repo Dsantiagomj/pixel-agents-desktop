@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { ToolActivity } from '../types.js'
 import type { OfficeState } from '../engine/officeState.js'
-import type { SubagentCharacter } from '../../hooks/useExtensionMessages.js'
+import type { SubagentCharacter, AgentType } from '../../hooks/useExtensionMessages.js'
 import { TILE_SIZE, CharacterState } from '../types.js'
 import { TOOL_OVERLAY_VERTICAL_OFFSET, CHARACTER_SITTING_OFFSET_PX } from '../../constants.js'
 
@@ -9,6 +9,7 @@ interface ToolOverlayProps {
   officeState: OfficeState
   agents: number[]
   agentTools: Record<number, ToolActivity[]>
+  agentTypes: Record<number, AgentType>
   subagentCharacters: SubagentCharacter[]
   containerRef: React.RefObject<HTMLDivElement | null>
   zoom: number
@@ -44,6 +45,7 @@ export function ToolOverlay({
   officeState,
   agents,
   agentTools,
+  agentTypes,
   subagentCharacters,
   containerRef,
   zoom,
@@ -111,6 +113,9 @@ export function ToolOverlay({
           activityText = getActivityText(id, agentTools, ch.isActive)
         }
 
+        // Check agent type for visual distinction
+        const isCodex = !isSub && agentTypes[id] === 'codex'
+
         // Determine dot color
         const tools = agentTools[id]
         const hasPermission = subHasPermission || tools?.some((t) => t.permissionWait && !t.done)
@@ -145,9 +150,11 @@ export function ToolOverlay({
                 alignItems: 'center',
                 gap: 5,
                 background: 'var(--pixel-bg)',
-                border: isSelected
-                  ? '2px solid var(--pixel-border-light)'
-                  : '2px solid var(--pixel-border)',
+                border: isCodex
+                  ? '2px solid var(--pixel-green)'
+                  : isSelected
+                    ? '2px solid var(--pixel-border-light)'
+                    : '2px solid var(--pixel-border)',
                 borderRadius: 0,
                 padding: isSelected ? '3px 6px 3px 8px' : '3px 8px',
                 boxShadow: 'var(--pixel-shadow)',

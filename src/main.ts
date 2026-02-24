@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, Tray } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, Tray, nativeImage } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -109,6 +109,13 @@ const bridge: IpcBridge = {
   },
 };
 
+function getIconPath(): string | undefined {
+  const packaged = app.isPackaged
+    ? path.join(process.resourcesPath, 'icon.png')
+    : path.join(__dirname, '..', 'build', 'icon.png');
+  return fs.existsSync(packaged) ? packaged : undefined;
+}
+
 function createWindow(): BrowserWindow {
   const settings = readSettings();
 
@@ -118,6 +125,7 @@ function createWindow(): BrowserWindow {
     x: settings.windowBounds?.x,
     y: settings.windowBounds?.y,
     alwaysOnTop: settings.alwaysOnTop,
+    icon: getIconPath(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -153,7 +161,7 @@ function startDiscovery(): void {
   discovery = new AgentDiscovery({
     onAgentDiscovered: (agent: AgentState) => {
       console.log(`[Pixel Agents] Sending agentCreated for agent ${agent.id}`);
-      send('agentCreated', { id: agent.id });
+      send('agentCreated', { id: agent.id, agentType: agent.agentType });
 
       // Start watching this agent's JSONL file
       const agents = discovery!.getAgents();
@@ -284,10 +292,17 @@ function setupIPC(): void {
   // Stub handlers — no terminal management in standalone mode
   ipcMain.on('focusAgent', () => {});
   ipcMain.on('closeAgent', () => {});
-  ipcMain.on('openClaude', () => {});
 }
 
 app.whenReady().then(() => {
+  // Set dock icon on macOS (overrides cached/default Electron icon)
+  if (process.platform === 'darwin') {
+    const iconPath = getIconPath();
+    if (iconPath) {
+      app.dock.setIcon(nativeImage.createFromPath(iconPath));
+    }
+  }
+
   mainWindow = createWindow();
   tray = createTray(mainWindow);
   setupIPC();

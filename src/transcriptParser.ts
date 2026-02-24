@@ -41,6 +41,29 @@ export function formatToolStatus(toolName: string, input: Record<string, unknown
   }
 }
 
+/** Format a Codex tool call into a human-readable status string */
+function formatCodexToolStatus(toolName: string, args: string): string {
+  switch (toolName) {
+    case 'exec_command': {
+      try {
+        const parsed = JSON.parse(args);
+        const cmd = (parsed.cmd as string) || '';
+        return `Running: ${cmd.length > BASH_COMMAND_DISPLAY_MAX_LENGTH ? cmd.slice(0, BASH_COMMAND_DISPLAY_MAX_LENGTH) + '\u2026' : cmd}`;
+      } catch {
+        return 'Running command';
+      }
+    }
+    case 'apply_patch': {
+      const match = args.match(/Update File:\s*(\S+)/);
+      if (match) return `Editing ${path.basename(match[1])}`;
+      const createMatch = args.match(/Create File:\s*(\S+)/);
+      if (createMatch) return `Creating ${path.basename(createMatch[1])}`;
+      return 'Applying patch';
+    }
+    default: return `Using ${toolName}`;
+  }
+}
+
 export function processTranscriptLine(
   agentId: number,
   line: string,
@@ -54,6 +77,13 @@ export function processTranscriptLine(
   try {
     const record = JSON.parse(line);
 
+    // Dispatch based on agent type
+    if (agent.agentType === 'codex') {
+      processCodexRecord(agentId, record, agents, waitingTimers, permissionTimers, bridge);
+      return;
+    }
+
+    // Claude Code format
     if (record.type === 'assistant' && Array.isArray(record.message?.content)) {
       const blocks = record.message.content as Array<{
         type: string; id?: string; name?: string; input?: Record<string, unknown>;
@@ -154,6 +184,145 @@ export function processTranscriptLine(
     // Ignore malformed lines
   }
 }
+
+// ── Codex JSONL parsing ──────────────────────────────────────
+
+function processCodexRecord(
+  agentId: number,
+  record: Record<string, unknown>,
+  agents: Map<number, AgentState>,
+  waitingTimers: Map<number, ReturnType<typeof setTimeout>>,
+  permissionTimers: Map<number, ReturnType<typeof setTimeout>>,
+  bridge: IpcBridge | undefined,
+): void {
+  const agent = agents.get(agentId);
+  if (!agent) return;
+
+  const recordType = record.type as string;
+  const payload = record.payload as Record<string, unknown> | undefined;
+  if (!payload) return;
+
+  const payloadType = payload.type as string;
+
+  if (recordType === 'event_msg') {
+    if (payloadType === 'task_started') {
+      // New turn started — previous turn is done
+      cancelWaitingTimer(agentId, waitingTimers);
+      cancelPermissionTimer(agentId, permissionTimers);
+
+      if (agent.activeToolIds.size > 0) {
+        agent.activeToolIds.clear();
+        agent.activeToolStatuses.clear();
+        agent.activeToolNames.clear();
+        bridge?.send('agentToolsClear', { id: agentId });
+      }
+
+      agent.isWaiting = false;
+      agent.permissionSent = false;
+      agent.hadToolsInTurn = false;
+      bridge?.send('agentStatus', { id: agentId, status: 'active' });
+    } else if (payloadType === 'agent_reasoning') {
+      // Agent is thinking — mark active
+      cancelWaitingTimer(agentId, waitingTimers);
+      agent.isWaiting = false;
+      bridge?.send('agentStatus', { id: agentId, status: 'active' });
+    } else if (payloadType === 'user_message') {
+      // User sent a message — agent will be waiting until task_started
+      agent.isWaiting = true;
+      bridge?.send('agentStatus', { id: agentId, status: 'waiting' });
+    }
+  } else if (recordType === 'response_item') {
+    if (payloadType === 'function_call') {
+      // Tool invocation: exec_command, etc.
+      const callId = payload.call_id as string;
+      const toolName = payload.name as string || '';
+      const args = payload.arguments as string || '';
+
+      if (!callId) return;
+
+      const status = formatCodexToolStatus(toolName, args);
+      console.log(`[Pixel Agents] Codex agent ${agentId} tool start: ${callId} ${status}`);
+
+      cancelWaitingTimer(agentId, waitingTimers);
+      agent.isWaiting = false;
+      agent.hadToolsInTurn = true;
+      agent.activeToolIds.add(callId);
+      agent.activeToolStatuses.set(callId, status);
+      agent.activeToolNames.set(callId, toolName);
+
+      bridge?.send('agentStatus', { id: agentId, status: 'active' });
+      bridge?.send('agentToolStart', { id: agentId, toolId: callId, status });
+
+      startPermissionTimer(agentId, agents, permissionTimers, PERMISSION_EXEMPT_TOOLS, bridge);
+    } else if (payloadType === 'function_call_output') {
+      // Tool result for exec_command
+      const callId = payload.call_id as string;
+      if (!callId) return;
+
+      console.log(`[Pixel Agents] Codex agent ${agentId} tool done: ${callId}`);
+      agent.activeToolIds.delete(callId);
+      agent.activeToolStatuses.delete(callId);
+      agent.activeToolNames.delete(callId);
+
+      const toolId = callId;
+      setTimeout(() => {
+        bridge?.send('agentToolDone', { id: agentId, toolId });
+      }, TOOL_DONE_DELAY_MS);
+
+      if (agent.activeToolIds.size === 0) {
+        agent.hadToolsInTurn = false;
+      }
+    } else if (payloadType === 'custom_tool_call') {
+      // Tool invocation: apply_patch, etc.
+      const callId = payload.call_id as string;
+      const toolName = payload.name as string || 'custom_tool';
+      const input = payload.input as string || '';
+
+      if (!callId) return;
+
+      const status = formatCodexToolStatus(toolName, input);
+      console.log(`[Pixel Agents] Codex agent ${agentId} tool start: ${callId} ${status}`);
+
+      cancelWaitingTimer(agentId, waitingTimers);
+      agent.isWaiting = false;
+      agent.hadToolsInTurn = true;
+      agent.activeToolIds.add(callId);
+      agent.activeToolStatuses.set(callId, status);
+      agent.activeToolNames.set(callId, toolName);
+
+      bridge?.send('agentStatus', { id: agentId, status: 'active' });
+      bridge?.send('agentToolStart', { id: agentId, toolId: callId, status });
+
+      startPermissionTimer(agentId, agents, permissionTimers, PERMISSION_EXEMPT_TOOLS, bridge);
+    } else if (payloadType === 'custom_tool_call_output') {
+      // Tool result for apply_patch, etc.
+      const callId = payload.call_id as string;
+      if (!callId) return;
+
+      console.log(`[Pixel Agents] Codex agent ${agentId} tool done: ${callId}`);
+      agent.activeToolIds.delete(callId);
+      agent.activeToolStatuses.delete(callId);
+      agent.activeToolNames.delete(callId);
+
+      const toolId = callId;
+      setTimeout(() => {
+        bridge?.send('agentToolDone', { id: agentId, toolId });
+      }, TOOL_DONE_DELAY_MS);
+
+      if (agent.activeToolIds.size === 0) {
+        agent.hadToolsInTurn = false;
+      }
+    } else if (payloadType === 'message') {
+      // Text message — agent responding without tools
+      const role = payload.role as string;
+      if (role === 'assistant' && !agent.hadToolsInTurn) {
+        startWaitingTimer(agentId, TEXT_IDLE_DELAY_MS, agents, waitingTimers, bridge);
+      }
+    }
+  }
+}
+
+// ── Claude Code progress records (subagent tracking) ─────────
 
 function processProgressRecord(
   agentId: number,

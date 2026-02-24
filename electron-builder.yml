@@ -13,6 +13,10 @@ files:
 extraMetadata:
   main: dist/main/main.js
 
+extraResources:
+  - from: build/icon.png
+    to: icon.png
+
 publish:
   - provider: github
     owner: Dsantiagomj

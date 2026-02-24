@@ -13,3 +13,4 @@ export const TASK_DESCRIPTION_DISPLAY_MAX_LENGTH = 40;
 export const AGENT_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 export const DISCOVERY_SCAN_INTERVAL_MS = 2000;
 export const CLAUDE_PROJECTS_DIR = '.claude/projects';
+export const CODEX_SESSIONS_DIR = '.codex/sessions';

@@ -1,5 +1,8 @@
+export type AgentType = 'claude' | 'codex';
+
 export interface AgentState {
   id: number;
+  agentType: AgentType;
   projectDir: string;
   jsonlFile: string;
   fileOffset: number;

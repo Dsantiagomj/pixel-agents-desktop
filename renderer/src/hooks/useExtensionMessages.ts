@@ -35,11 +35,14 @@ export interface FurnitureAsset {
   backgroundTiles?: number
 }
 
+export type AgentType = 'claude' | 'codex';
+
 export interface ExtensionMessageState {
   agents: number[]
   selectedAgent: number | null
   agentTools: Record<number, ToolActivity[]>
   agentStatuses: Record<number, string>
+  agentTypes: Record<number, AgentType>
   subagentTools: Record<number, Record<string, ToolActivity[]>>
   subagentCharacters: SubagentCharacter[]
   layoutReady: boolean
@@ -64,6 +67,7 @@ export function useExtensionMessages(
   const [selectedAgent, setSelectedAgent] = useState<number | null>(null)
   const [agentTools, setAgentTools] = useState<Record<number, ToolActivity[]>>({})
   const [agentStatuses, setAgentStatuses] = useState<Record<number, string>>({})
+  const [agentTypes, setAgentTypes] = useState<Record<number, AgentType>>({})
   const [subagentTools, setSubagentTools] = useState<Record<number, Record<string, ToolActivity[]>>>({})
   const [subagentCharacters, setSubagentCharacters] = useState<SubagentCharacter[]>([])
   const [layoutReady, setLayoutReady] = useState(false)
@@ -107,7 +111,9 @@ export function useExtensionMessages(
         }
       } else if (msg.type === 'agentCreated') {
         const id = msg.id as number
+        const aType = (msg.agentType as AgentType) || 'claude'
         setAgents((prev) => (prev.includes(id) ? prev : [...prev, id]))
+        setAgentTypes((prev) => ({ ...prev, [id]: aType }))
         setSelectedAgent(id)
         os.addAgent(id)
         saveAgentSeats(os)
@@ -122,6 +128,12 @@ export function useExtensionMessages(
           return next
         })
         setAgentStatuses((prev) => {
+          if (!(id in prev)) return prev
+          const next = { ...prev }
+          delete next[id]
+          return next
+        })
+        setAgentTypes((prev) => {
           if (!(id in prev)) return prev
           const next = { ...prev }
           delete next[id]
@@ -360,5 +372,5 @@ export function useExtensionMessages(
     return () => cleanups.forEach(cleanup => cleanup())
   }, [getOfficeState])
 
-  return { agents, selectedAgent, agentTools, agentStatuses, subagentTools, subagentCharacters, layoutReady, loadedAssets }
+  return { agents, selectedAgent, agentTools, agentStatuses, agentTypes, subagentTools, subagentCharacters, layoutReady, loadedAssets }
 }

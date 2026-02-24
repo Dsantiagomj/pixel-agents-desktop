@@ -3,10 +3,11 @@ import * as os from 'os';
 import * as path from 'path';
 import {
   CLAUDE_PROJECTS_DIR,
+  CODEX_SESSIONS_DIR,
   DISCOVERY_SCAN_INTERVAL_MS,
   AGENT_IDLE_TIMEOUT_MS,
 } from './constants.js';
-import type { AgentState } from './types.js';
+import type { AgentState, AgentType } from './types.js';
 
 export interface DiscoveryCallbacks {
   onAgentDiscovered: (agent: AgentState) => void;
@@ -45,18 +46,24 @@ export class AgentDiscovery {
   }
 
   private scan(): void {
+    // Scan Claude Code projects
     const claudeDir = path.join(os.homedir(), CLAUDE_PROJECTS_DIR);
-    if (!fs.existsSync(claudeDir)) return;
-
-    try {
-      const projectDirs = fs.readdirSync(claudeDir, { withFileTypes: true });
-      for (const dir of projectDirs) {
-        if (!dir.isDirectory()) continue;
-        const projectPath = path.join(claudeDir, dir.name);
-        this.scanProjectDir(projectPath);
+    if (fs.existsSync(claudeDir)) {
+      try {
+        const projectDirs = fs.readdirSync(claudeDir, { withFileTypes: true });
+        for (const dir of projectDirs) {
+          if (!dir.isDirectory()) continue;
+          this.scanDirForJsonl(path.join(claudeDir, dir.name), 'claude');
+        }
+      } catch {
+        // Directory may not exist yet
       }
-    } catch {
-      // Directory may not exist yet
+    }
+
+    // Scan Codex sessions (recursive date-based: YYYY/MM/DD/)
+    const codexDir = path.join(os.homedir(), CODEX_SESSIONS_DIR);
+    if (fs.existsSync(codexDir)) {
+      this.scanCodexSessionsRecursive(codexDir);
     }
 
     // Check for dormant agents
@@ -78,46 +85,65 @@ export class AgentDiscovery {
     }
   }
 
-  private scanProjectDir(projectPath: string): void {
+  private scanCodexSessionsRecursive(dir: string): void {
     try {
-      const files = fs.readdirSync(projectPath);
-      for (const file of files) {
-        if (!file.endsWith('.jsonl')) continue;
-        const fullPath = path.join(projectPath, file);
-
-        if (this.knownFiles.has(fullPath)) continue;
-
-        try {
-          const stat = fs.statSync(fullPath);
-          const age = Date.now() - stat.mtimeMs;
-          if (age > AGENT_IDLE_TIMEOUT_MS) continue;
-
-          const id = this.nextId++;
-          const agent: AgentState = {
-            id,
-            projectDir: projectPath,
-            jsonlFile: fullPath,
-            fileOffset: stat.size, // Start from end — only track new activity
-            lineBuffer: '',
-            activeToolIds: new Set(),
-            activeToolStatuses: new Map(),
-            activeToolNames: new Map(),
-            activeSubagentToolIds: new Map(),
-            activeSubagentToolNames: new Map(),
-            isWaiting: false,
-            permissionSent: false,
-            hadToolsInTurn: false,
-          };
-          this.agents.set(id, agent);
-          this.knownFiles.set(fullPath, id);
-          console.log(`[Pixel Agents] Agent ${id} discovered: ${path.basename(fullPath)}`);
-          this.callbacks.onAgentDiscovered(agent);
-        } catch {
-          // Can't stat — skip
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          this.scanCodexSessionsRecursive(fullPath);
+        } else if (entry.name.endsWith('.jsonl')) {
+          this.tryRegisterJsonl(fullPath, dir, 'codex');
         }
       }
     } catch {
       // Can't read dir — skip
+    }
+  }
+
+  private scanDirForJsonl(projectPath: string, agentType: AgentType): void {
+    try {
+      const files = fs.readdirSync(projectPath);
+      for (const file of files) {
+        if (!file.endsWith('.jsonl')) continue;
+        this.tryRegisterJsonl(path.join(projectPath, file), projectPath, agentType);
+      }
+    } catch {
+      // Can't read dir — skip
+    }
+  }
+
+  private tryRegisterJsonl(fullPath: string, projectPath: string, agentType: AgentType): void {
+    if (this.knownFiles.has(fullPath)) return;
+
+    try {
+      const stat = fs.statSync(fullPath);
+      const age = Date.now() - stat.mtimeMs;
+      if (age > AGENT_IDLE_TIMEOUT_MS) return;
+
+      const id = this.nextId++;
+      const agent: AgentState = {
+        id,
+        agentType,
+        projectDir: projectPath,
+        jsonlFile: fullPath,
+        fileOffset: stat.size, // Start from end — only track new activity
+        lineBuffer: '',
+        activeToolIds: new Set(),
+        activeToolStatuses: new Map(),
+        activeToolNames: new Map(),
+        activeSubagentToolIds: new Map(),
+        activeSubagentToolNames: new Map(),
+        isWaiting: false,
+        permissionSent: false,
+        hadToolsInTurn: false,
+      };
+      this.agents.set(id, agent);
+      this.knownFiles.set(fullPath, id);
+      console.log(`[Pixel Agents] ${agentType} agent ${id} discovered: ${path.basename(fullPath)}`);
+      this.callbacks.onAgentDiscovered(agent);
+    } catch {
+      // Can't stat — skip
     }
   }
 }
